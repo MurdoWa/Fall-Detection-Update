@@ -41,7 +41,7 @@ def main():
     # Get Firestore client
     db = firestore.client()
     print("Connected to Firebase successfully!")
-
+    threshold = 0.6
 
     imageAmount = 1
     saveLocation ="images/"
@@ -55,13 +55,13 @@ def main():
         listen(10)
         TakeIMG(saveLocation, "TEMPNAME.png")
         img_array = ProcessImg(saveLocation+"TEMPNAME.png")
-
+        fallBool = FallDetect(img_array, fallBool, threshold)
         now = datetime.now()
         dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
 
-        db.collection('ReceivedData').document('Laptop Testing').update({
-            dt_string: fallBool,
-        })
+        #db.collection('ReceivedData').document('test').update({
+        #    dt_string: fallBool,
+        #})
 
         RenameIMG(saveLocation, fallBool)
 

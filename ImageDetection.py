@@ -1,4 +1,4 @@
-from cv2 import VideoCapture, imshow, imwrite, waitKey, destroyWindow
+import cv2
 from huggingface_hub import hf_hub_download
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
@@ -28,12 +28,12 @@ def ProcessImg(img_path):
     plt.show()
     return img_array
 
-def FallDetect(img_array, fallBool):
+def FallDetect(img_array, fallBool, threshold):
 
     prediction = model.predict(img_array)
     print("Raw prediction:", prediction)
 
-    if prediction[0] < 0.60:
+    if prediction[0] < threshold:
         print("Prediction: 🚨 Fall Detected! 🚨")
         fallBool = True
     else:
@@ -44,12 +44,12 @@ def FallDetect(img_array, fallBool):
 def TakeIMG(saveLocation,fileName):
 
     # Initialize webcam (0 = default camera)
-    cam = VideoCapture(0)
+    cam = cv2.VideoCapture(0)
     # Capture one frame
     ret, frame = cam.read()
 
     if ret:
-        imwrite(saveLocation+fileName, frame)
+        cv2.imwrite(saveLocation + fileName, frame)
         print("Captured image")
     else:
         print("Failed to capture image.")
@@ -68,4 +68,23 @@ def RenameIMG(saveLocation, fallBool):
 
 def DeleteIMG(saveLocation, fileName):
     os.remove(saveLocation+fileName)
+
+
+def AndResults(analysis1, analysis2 ,threshold):
+    if analysis1 > threshold and analysis2 > threshold:
+        return True
+    else:
+        return False
+def OrResults(analysis1, analysis2 ,threshold):
+    if analysis1 > threshold:
+        return True
+    elif analysis2 > threshold:
+        return True
+    else:
+        return False
+
+
+def MeanResults(analysis1, analysis2 ):
+    analysis3 = (analysis1 + analysis2)/2
+    return analysis3
 
