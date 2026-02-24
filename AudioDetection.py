@@ -1,15 +1,18 @@
 import pyaudio
 from ImageDetection import *
+from FileManager import *
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import datetime
 
+#must be changed for Pi
 CHUNK = 1024
-RATE = 44100
+RATE = 16000
 
-
-def listen(threshold):
+def listen(Audiothreshold):
+    #setting our audio stream to p
     p = pyaudio.PyAudio()
+
+    #starting listening
     stream = p.open(format=pyaudio.paInt16,
                     channels=1,
                     rate=RATE,
@@ -30,7 +33,7 @@ def listen(threshold):
         # convert to 0–100 volume scale
         volume = int(min((rms / 32768) * 100, 100))
         print(volume)
-        if volume > threshold:
+        if volume > Audiothreshold:
             break
 
 def main():
@@ -41,29 +44,44 @@ def main():
     # Get Firestore client
     db = firestore.client()
     print("Connected to Firebase successfully!")
-    threshold = 0.6
 
-    imageAmount = 1
+    #Threshold to detect fall, below 0.6 = fall
+    threshold = 0.6
+    #filepath to save images
     saveLocation ="images/"
-    fileName = "captured_image"
-    fallBool = False
+    #amount of cameras in use
+    cameraAmount = 1
+    #used to store prediction values
+    predictions = [0] * cameraAmount
 
     while True:
-        #imageAmount = findNextFile(saveLocation)
+        #begins listening
+        listen(1)
+        i = 0
+        #loops to detect falls
+        while (i < cameraAmount):
+            #takes image
+            TakeIMG(saveLocation, "TEMPNAME.png", i)
+            #Sets image size
+            img_array = ProcessImg(saveLocation + "TEMPNAME.png")
+            #predicts fall
+            predictions[i] = FallDetect(img_array, threshold)
+            #renams image to reflect the fall,
+            RenameIMG(saveLocation, predictions[i], threshold)
 
+            i += 1
 
-        listen(10)
-        TakeIMG(saveLocation, "TEMPNAME.png")
-        img_array = ProcessImg(saveLocation+"TEMPNAME.png")
-        fallBool = FallDetect(img_array, fallBool, threshold)
-        now = datetime.now()
-        dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
+        #gets mean value based on prediction values
+        FallPredFinal = MeanResults(predictions)
 
-        #db.collection('ReceivedData').document('test').update({
-        #    dt_string: fallBool,
-        #})
+        print("Mean prediction:", FallPredFinal)
 
-        RenameIMG(saveLocation, fallBool)
+        #prints fall
+        if FallPredFinal < threshold:
+            print("Prediction: 🚨 Fall Detected! 🚨")
+        else:
+            print("Prediction: ✅ No Fall Detected.")
+
 
 
 

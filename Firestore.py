@@ -1,14 +1,5 @@
-# To install Firestore commands:
-# pip install google-cloud-firestore
-# pip install --upgrade firebase-admin
-
-# Set credentials
-# export GOOGLE_APPLICATION_CREDENTIALS="/path/to/serviceAccountKey.json"
-
-# Use the application default credentials.
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import datetime, timedelta
 
 
 class FirestoreClient():

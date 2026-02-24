@@ -5,9 +5,6 @@ from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.efficientnet import preprocess_input
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from datetime import datetime
-
 #Download model from Hugging Face
 model_path = hf_hub_download(
     repo_id="Siddhartha276/Fall_Detection",
@@ -16,6 +13,9 @@ model_path = hf_hub_download(
 #Load the model
 model = load_model(model_path)
 
+
+#sets image to 224x224
+#takes in path to image
 def ProcessImg(img_path):
     IMG_SIZE = (224, 224)
     img = image.load_img(img_path, target_size=IMG_SIZE)
@@ -23,51 +23,45 @@ def ProcessImg(img_path):
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
 
+    #shows image (useless on command line)
     plt.imshow(img)
     plt.axis("off")
     plt.show()
     return img_array
 
-def FallDetect(img_array, fallBool, threshold):
+#detects fall
+#takes in path to image and fall threshold
+#returns prediction as float
+def FallDetect(img_array, threshold):
 
     prediction = model.predict(img_array)
     print("Raw prediction:", prediction)
 
     if prediction[0] < threshold:
         print("Prediction: 🚨 Fall Detected! 🚨")
-        fallBool = True
     else:
         print("Prediction: ✅ No Fall Detected.")
-        fallBool = False
-    return fallBool
+    return prediction
 
-def TakeIMG(saveLocation,fileName):
+
+#takes image
+#takes in file save location, name to save the file and the input camera
+def TakeIMG(saveLocation,fileName, inputCam):
 
     # Initialize webcam (0 = default camera)
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture(inputCam)
     # Capture one frame
     ret, frame = cam.read()
 
+
     if ret:
+        #saves image
         cv2.imwrite(saveLocation + fileName, frame)
         print("Captured image")
     else:
         print("Failed to capture image.")
 
     cam.release()
-
-
-def RenameIMG(saveLocation, fallBool):
-    now = datetime.now()
-    dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
-    if fallBool == True:
-        os.rename(saveLocation+"TEMPNAME.png", saveLocation+"fall_"+dt_string+".png")
-
-    elif fallBool == False:
-        os.rename(saveLocation+"TEMPNAME.png", saveLocation+"nofall_"+dt_string+".png")
-
-def DeleteIMG(saveLocation, fileName):
-    os.remove(saveLocation+fileName)
 
 
 def AndResults(analysis1, analysis2 ,threshold):
@@ -83,8 +77,8 @@ def OrResults(analysis1, analysis2 ,threshold):
     else:
         return False
 
+def MeanResults(predictions ):
 
-def MeanResults(analysis1, analysis2 ):
-    analysis3 = (analysis1 + analysis2)/2
+    analysis3 = np.mean(predictions)
     return analysis3
 
