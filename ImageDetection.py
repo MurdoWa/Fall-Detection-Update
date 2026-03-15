@@ -1,4 +1,5 @@
 import cv2
+import time
 from huggingface_hub import hf_hub_download
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
@@ -46,23 +47,31 @@ def FallDetect(img_array, threshold):
 
 #takes image
 #takes in file save location, name to save the file and the input camera
-def TakeIMG(saveLocation,fileName, inputCam):
-
-    # Initialize webcam (0 = default camera)
+def TakeIMG(saveLocation, fileName, inputCam):
+    """
+    Captures a single image from the specified camera only when called.
+    Opens and releases the camera immediately to avoid keeping it always on.
+    """
     cam = cv2.VideoCapture(inputCam)
-    # Capture one frame
+
+    # Check if camera opened successfully
+    if not cam.isOpened():
+        print(f"Camera {inputCam} not available")
+        return False
+
     ret, frame = cam.read()
-
-
     if ret:
-        #saves image
         cv2.imwrite(saveLocation + fileName, frame)
         print("Captured image")
     else:
-        print("Failed to capture image.")
+        print(f"Failed to capture image from camera {inputCam}")
 
     cam.release()
-
+    
+    # Small pause to reduce Linux V4L2 warnings on repeated access
+    time.sleep(0.2)
+    
+    return ret
 
 def AndResults(analysis1, analysis2 ,threshold):
     if analysis1 > threshold and analysis2 > threshold:
