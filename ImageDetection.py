@@ -6,6 +6,21 @@ from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.efficientnet import preprocess_input
 import numpy as np
 import matplotlib.pyplot as plt
+# Disable ALSA warnings
+import ctypes
+from ctypes import *
+import os
+def noalsaerr(*args):
+    pass
+
+ERROR_HANDLER_FUNC = CFUNCTYPE(None, c_char_p, c_int, c_char_p, c_int, c_char_p)
+c_error_handler = ERROR_HANDLER_FUNC(noalsaerr)
+
+asound = cdll.LoadLibrary("libasound.so")
+asound.snd_lib_error_set_handler(c_error_handler)
+
+os.environ["JACK_NO_START_SERVER"] = "1"
+
 #Download model from Hugging Face
 model_path = hf_hub_download(
     repo_id="Siddhartha276/Fall_Detection",

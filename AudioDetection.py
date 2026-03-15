@@ -4,6 +4,7 @@ from ImageDetection import *
 from FileManager import *
 import firebase_admin
 from firebase_admin import credentials, firestore
+from datetime import datetime
 
 # Audio configuration
 CHUNK = 1024
@@ -59,7 +60,7 @@ def main():
     and display results.
     """
     # Initialize Firebase with service account
-    cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-5c93a456e9.json')
+    cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Connected to Firebase successfully!")
@@ -78,7 +79,7 @@ def main():
 
     while True:
         # Begin listening
-        listen(30)
+        listen(10)
 
         i = 0
         while i < cameraAmount:
@@ -98,7 +99,18 @@ def main():
 
         # Get mean value based on prediction values
         FallPredFinal = MeanResults(predictions)
-        print("Mean prediction:", FallPredFinal)
+
+
+        timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
+
+        fall_detected = bool(FallPredFinal < threshold)
+
+        db.collection("FallEvents").document("events").set({
+    		"timestamp": timestamp,
+    		"fall": fall_detected
+	}, merge=True)
+
+        print(f"Uploaded to Firebase: {timestamp} -> {fall_detected}")
 
         # Print fall detection result
         if FallPredFinal < threshold:
