@@ -5,17 +5,21 @@ from FileManager import *
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
+import time
 
 # Audio configuration
 CHUNK = 1024
 RATE = 16000
 
-def listen(Audiothreshold, device_index=None):
+
+def Listen(Audiothreshold, device_index=None):
     """
     Listens to audio input until the RMS volume exceeds the threshold.
     Properly closes the PyAudio stream to avoid device errors.
     """
     p = pyaudio.PyAudio()
+    stream = None
+
     try:
         stream = p.open(
             format=pyaudio.paInt16,
@@ -30,7 +34,10 @@ def listen(Audiothreshold, device_index=None):
 
         while True:
             try:
-                data = np.frombuffer(stream.read(CHUNK, exception_on_overflow=False), dtype=np.int16)
+                data = np.frombuffer(
+                    stream.read(CHUNK, exception_on_overflow=False),
+                    dtype=np.int16
+                )
             except IOError as e:
                 print("Audio read error:", e)
                 continue
@@ -46,12 +53,25 @@ def listen(Audiothreshold, device_index=None):
                 break
 
     finally:
-        # Properly close the stream and terminate PyAudio
-        stream.stop_stream()
-        stream.close()
+        if stream is not None:
+            stream.stop_stream()
+            stream.close()
         p.terminate()
         print("Audio stream closed.")
 
+
+def is_paused(db):
+    """
+    Check pause state from Firebase.
+    """
+    try:
+        doc = db.collection("SystemControl").document("state").get()
+        if doc.exists:
+            return doc.to_dict().get("paused", False)
+    except Exception as e:
+        print("Pause check error:", e)
+
+    return False
 
 
 def main():
@@ -59,64 +79,66 @@ def main():
     Main function to initialize Firebase, capture images, predict falls,
     and display results.
     """
-    # Initialize Firebase with service account
+
+    # Initialize Firebase
     cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Connected to Firebase successfully!")
 
-    # Threshold to detect fall, below 0.6 = fall
     threshold = 0.6
-
-    # Filepath to save images
     saveLocation = "images/"
-
-    # Number of cameras in use
     cameraAmount = 2
-
-    # Used to store prediction values
     predictions = [0] * cameraAmount
 
     while True:
-        # Begin listening
-        listen(10)
 
-        i = 0
-        while i < cameraAmount:
-            # Take image
+        # 🔴 PAUSE CHECK (BEFORE EVERYTHING)
+        if is_paused(db):
+            print("⏸️ System paused from Firebase...")
+            time.sleep(1)  # prevent CPU spam
+            continue
+
+        # 🎤 Listen for trigger sound
+        Listen(10)
+
+        # 🔴 Check again after listening (important!)
+        if is_paused(db):
+            print("⏸️ System paused before processing...")
+            continue
+
+        # 📷 Capture + predict
+        for i in range(cameraAmount):
             TakeIMG(saveLocation, "TEMPNAME.png", i)
 
-            # Set image size
             img_array = ProcessImg(saveLocation + "TEMPNAME.png")
 
-            # Predict fall
             predictions[i] = FallDetect(img_array, threshold)
 
-            # Rename image to reflect prediction
             RenameIMG(saveLocation, predictions[i], threshold)
 
-            i += 1
-
-        # Get mean value based on prediction values
-        FallPredFinal = MeanResults(predictions)
-
+        # 📊 Final decision
+        fallPredFinal = MeanResults(predictions)
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
+        fall_detected = bool(fallPredFinal < threshold)
 
-        fall_detected = bool(FallPredFinal < threshold)
-
+        # ☁️ Upload result
         db.collection("FallEvents").document("events").set({
-    		"timestamp": timestamp,
-    		"fall": fall_detected
-	}, merge=True)
+            "timestamp": timestamp,
+            "fall": fall_detected
+        }, merge=True)
 
         print(f"Uploaded to Firebase: {timestamp} -> {fall_detected}")
 
-        # Print fall detection result
-        if FallPredFinal < threshold:
-            print("Prediction: 🚨 Fall Detected! 🚨")
+        if fall_detected:
+            print("🚨 Fall Detected! 🚨")
         else:
-            print("Prediction: ✅ No Fall Detected.")
+            print("✅ No Fall Detected.")
+
+        # Small delay to prevent rapid looping
+        time.sleep(0.5)
+
 
 if __name__ == "__main__":
     main()
