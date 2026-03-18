@@ -60,7 +60,7 @@ def Listen(Audiothreshold, device_index=None):
         print("Audio stream closed.")
 
 
-def is_paused(db):
+def IsPaused(db):
     """
     Check pause state from Firebase.
     """
@@ -94,7 +94,7 @@ def main():
     while True:
 
         # 🔴 PAUSE CHECK (BEFORE EVERYTHING)
-        if is_paused(db):
+        if IsPaused(db):
             print("⏸️ System paused from Firebase...")
             time.sleep(1)  # prevent CPU spam
             continue
@@ -103,7 +103,7 @@ def main():
         Listen(10)
 
         # 🔴 Check again after listening (important!)
-        if is_paused(db):
+        if IsPaused(db):
             print("⏸️ System paused before processing...")
             continue
 
@@ -111,9 +111,9 @@ def main():
         for i in range(cameraAmount):
             TakeIMG(saveLocation, "TEMPNAME.png", i)
 
-            img_array = ProcessImg(saveLocation + "TEMPNAME.png")
+            imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
 
-            predictions[i] = FallDetect(img_array, threshold)
+            predictions[i] = FallDetect(imgArray, threshold)
 
             RenameIMG(saveLocation, predictions[i], threshold)
 
@@ -121,17 +121,17 @@ def main():
         fallPredFinal = MeanResults(predictions)
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
-        fall_detected = bool(fallPredFinal < threshold)
+        fallDetected = bool(fallPredFinal < threshold)
 
         # ☁️ Upload result
         db.collection("FallEvents").document("events").set({
             "timestamp": timestamp,
-            "fall": fall_detected
+            "fall": fallDetected
         }, merge=True)
 
-        print(f"Uploaded to Firebase: {timestamp} -> {fall_detected}")
+        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected}")
 
-        if fall_detected:
+        if fallDetected:
             print("🚨 Fall Detected! 🚨")
         else:
             print("✅ No Fall Detected.")
