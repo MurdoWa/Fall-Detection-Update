@@ -6,16 +6,37 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 import time
+import keyboard
 
 # Audio configuration
 CHUNK = 1024
 RATE = 16000
 
+# 🔴 Local pause state
+paused_local = False
+
+
+def CheckLocalPause():
+    """
+    Toggle pause when 'p' is pressed.
+    """
+    global paused_local
+
+    if keyboard.is_pressed('p'):
+        paused_local = not paused_local
+
+        if paused_local:
+            print("⏸️ Paused (press 'p' to resume)")
+        else:
+            print("▶️ Resumed")
+
+        time.sleep(0.5)  # debounce
+
 
 def Listen(Audiothreshold, device_index=None):
     """
     Listens to audio input until the RMS volume exceeds the threshold.
-    Properly closes the PyAudio stream to avoid device errors.
+    Supports pause during listening.
     """
     p = pyaudio.PyAudio()
     stream = None
@@ -33,6 +54,13 @@ def Listen(Audiothreshold, device_index=None):
         print("Listening...")
 
         while True:
+
+            # 🔴 LOCAL PAUSE
+            CheckLocalPause()
+            if paused_local:
+                time.sleep(0.2)
+                continue
+
             try:
                 data = np.frombuffer(
                     stream.read(CHUNK, exception_on_overflow=False),
@@ -60,27 +88,13 @@ def Listen(Audiothreshold, device_index=None):
         print("Audio stream closed.")
 
 
-def IsPaused(db):
-    """
-    Check pause state from Firebase.
-    """
-    try:
-        doc = db.collection("SystemControl").document("state").get()
-        if doc.exists:
-            return doc.to_dict().get("paused", False)
-    except Exception as e:
-        print("Pause check error:", e)
-
-    return False
-
-
 def main():
     """
     Main function to initialize Firebase, capture images, predict falls,
-    and display results.
+    and upload results.
     """
 
-    # Initialize Firebase
+    # Firebase still used for uploading results (NOT pausing)
     cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
@@ -93,22 +107,28 @@ def main():
 
     while True:
 
-        # 🔴 PAUSE CHECK (BEFORE EVERYTHING)
-        if IsPaused(db):
-            print("⏸️ System paused from Firebase...")
-            time.sleep(1)  # prevent CPU spam
+        # 🔴 LOCAL PAUSE
+        CheckLocalPause()
+        if paused_local:
+            time.sleep(0.2)
             continue
 
         # 🎤 Listen for trigger sound
         Listen(10)
 
-        # 🔴 Check again after listening (important!)
-        if IsPaused(db):
-            print("⏸️ System paused before processing...")
+        # 🔴 Pause again after listening
+        CheckLocalPause()
+        if paused_local:
             continue
 
         # 📷 Capture + predict
         for i in range(cameraAmount):
+
+            # Pause-safe loop
+            while paused_local:
+                CheckLocalPause()
+                time.sleep(0.2)
+
             TakeIMG(saveLocation, "TEMPNAME.png", i)
 
             imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
@@ -136,7 +156,6 @@ def main():
         else:
             print("✅ No Fall Detected.")
 
-        # Small delay to prevent rapid looping
         time.sleep(0.5)
 
 
