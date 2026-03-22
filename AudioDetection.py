@@ -57,13 +57,22 @@ def Listen(Audiothreshold, device_index=None):
             stream.close()
         p.terminate()
         print("Audio stream closed.")
-
-
 def main():
     """
     Main function to initialize Firebase, capture images, predict falls,
     and upload results.
     """
+
+    # Ask user for number of cameras
+    while True:
+        try:
+            cameraAmount = int(input("Enter number of cameras to use: "))
+            if cameraAmount > 0:
+                break
+            else:
+                print("Please enter a positive number.")
+        except ValueError:
+            print("Invalid input. Please enter a whole number.")
 
     # Firebase initialization
     cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
@@ -73,15 +82,14 @@ def main():
 
     threshold = 0.6
     saveLocation = "images/"
-    cameraAmount = 1
     predictions = [0] * cameraAmount
 
     while True:
 
-        # 🎤 Listen for trigger sound
+        # Listen for trigger sound
         Listen(10)
 
-        # 📷 Capture + predict
+        # Capture + predict
         for i in range(cameraAmount):
 
             TakeIMG(saveLocation, "TEMPNAME.png", i)
@@ -92,13 +100,13 @@ def main():
 
             RenameIMG(saveLocation, predictions[i], threshold)
 
-        # 📊 Final decision
+        # Final decision
         fallPredFinal = MeanResults(predictions)
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
         fallDetected = bool(fallPredFinal < threshold)
 
-        # ☁️ Upload result — each event gets its own document
+        # Upload result — each event gets its own document
         db.collection("FallEvents").document(timestamp).set({
             "timestamp": timestamp,
             "fall": fallDetected,
@@ -113,7 +121,6 @@ def main():
             print("✅ No Fall Detected.")
 
         time.sleep(0.5)
-
 
 if __name__ == "__main__":
     main()
