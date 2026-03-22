@@ -6,37 +6,15 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 import time
-import keyboard
 
 # Audio configuration
 CHUNK = 1024
 RATE = 16000
 
-# 🔴 Local pause state
-paused_local = False
-
-
-def CheckLocalPause():
-    """
-    Toggle pause when 'p' is pressed.
-    """
-    global paused_local
-
-    if keyboard.is_pressed('p'):
-        paused_local = not paused_local
-
-        if paused_local:
-            print("⏸️ Paused (press 'p' to resume)")
-        else:
-            print("▶️ Resumed")
-
-        time.sleep(0.5)  # debounce
-
 
 def Listen(Audiothreshold, device_index=None):
     """
     Listens to audio input until the RMS volume exceeds the threshold.
-    Supports pause during listening.
     """
     p = pyaudio.PyAudio()
     stream = None
@@ -54,13 +32,6 @@ def Listen(Audiothreshold, device_index=None):
         print("Listening...")
 
         while True:
-
-            # 🔴 LOCAL PAUSE
-            CheckLocalPause()
-            if paused_local:
-                time.sleep(0.2)
-                continue
-
             try:
                 data = np.frombuffer(
                     stream.read(CHUNK, exception_on_overflow=False),
@@ -94,7 +65,7 @@ def main():
     and upload results.
     """
 
-    # Firebase still used for uploading results (NOT pausing)
+    # Firebase initialization
     cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
@@ -102,32 +73,16 @@ def main():
 
     threshold = 0.6
     saveLocation = "images/"
-    cameraAmount = 2
+    cameraAmount = 1
     predictions = [0] * cameraAmount
 
     while True:
 
-        # 🔴 LOCAL PAUSE
-        CheckLocalPause()
-        if paused_local:
-            time.sleep(0.2)
-            continue
-
         # 🎤 Listen for trigger sound
         Listen(10)
 
-        # 🔴 Pause again after listening
-        CheckLocalPause()
-        if paused_local:
-            continue
-
         # 📷 Capture + predict
         for i in range(cameraAmount):
-
-            # Pause-safe loop
-            while paused_local:
-                CheckLocalPause()
-                time.sleep(0.2)
 
             TakeIMG(saveLocation, "TEMPNAME.png", i)
 
@@ -143,13 +98,14 @@ def main():
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
         fallDetected = bool(fallPredFinal < threshold)
 
-        # ☁️ Upload result
-        db.collection("FallEvents").document("events").set({
+        # ☁️ Upload result — each event gets its own document
+        db.collection("FallEvents").document(timestamp).set({
             "timestamp": timestamp,
-            "fall": fallDetected
-        }, merge=True)
+            "fall": fallDetected,
+            "prediction_score": float(fallPredFinal)
+        })
 
-        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected}")
+        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected} (score={fallPredFinal})")
 
         if fallDetected:
             print("🚨 Fall Detected! 🚨")
