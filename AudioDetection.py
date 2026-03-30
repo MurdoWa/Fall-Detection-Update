@@ -57,6 +57,8 @@ def Listen(Audiothreshold, device_index=None):
             stream.close()
         p.terminate()
         print("Audio stream closed.")
+
+
 def main():
     """
     Main function to initialize Firebase, capture images, predict falls,
@@ -79,6 +81,12 @@ def main():
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Connected to Firebase successfully!")
+
+    # Ask user for collection name
+    collection_name = input("Enter the Firestore collection name to push events to: ").strip()
+    if not collection_name:
+        collection_name = "FallEvents"
+        print(f"No name entered, defaulting to '{collection_name}'.")
 
     threshold = 0.6
     saveLocation = "images/"
@@ -107,7 +115,7 @@ def main():
         fallDetected = bool(fallPredFinal < threshold)
 
         # Upload result — each event gets its own document
-        db.collection("FallEvents").document(timestamp).set({
+        db.collection(collection_name).document(timestamp).set({
             "timestamp": timestamp,
             "fall": fallDetected,
             "prediction_score": float(fallPredFinal)
@@ -121,6 +129,7 @@ def main():
             print("✅ No Fall Detected.")
 
         time.sleep(0.5)
+
 
 if __name__ == "__main__":
     main()

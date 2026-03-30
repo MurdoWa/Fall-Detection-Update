@@ -11,5 +11,4 @@ def RenameIMG(saveLocation, fallpred, threshold):
     elif fallpred < threshold:
         os.rename(saveLocation+"TEMPNAME.png", saveLocation+"nofall_"+dt_string+".png")
 
-def DeleteIMG(saveLocation, fileName):
-    os.remove(saveLocation+fileName)
+
