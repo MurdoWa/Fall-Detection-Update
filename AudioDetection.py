@@ -15,7 +15,6 @@ RATE = 16000
 def Listen(Audiothreshold, device_index=None):
     """
     Listens to audio input until the RMS volume exceeds the threshold.
-    Properly closes the PyAudio stream to avoid device errors.
     """
     p = pyaudio.PyAudio()
     stream = None
@@ -58,29 +57,24 @@ def Listen(Audiothreshold, device_index=None):
             stream.close()
         p.terminate()
         print("Audio stream closed.")
-
-
-def IsPaused(db):
-    """
-    Check pause state from Firebase.
-    """
-    try:
-        doc = db.collection("SystemControl").document("state").get()
-        if doc.exists:
-            return doc.to_dict().get("paused", False)
-    except Exception as e:
-        print("Pause check error:", e)
-
-    return False
-
-
 def main():
     """
     Main function to initialize Firebase, capture images, predict falls,
-    and display results.
+    and upload results.
     """
 
-    # Initialize Firebase
+    # Ask user for number of cameras
+    while True:
+        try:
+            cameraAmount = int(input("Enter number of cameras to use: "))
+            if cameraAmount > 0:
+                break
+            else:
+                print("Please enter a positive number.")
+        except ValueError:
+            print("Invalid input. Please enter a whole number.")
+
+    # Firebase initialization
     cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
@@ -88,27 +82,16 @@ def main():
 
     threshold = 0.6
     saveLocation = "images/"
-    cameraAmount = 1
     predictions = [0] * cameraAmount
 
     while True:
 
-        # 🔴 PAUSE CHECK (BEFORE EVERYTHING)
-        if IsPaused(db):
-            print("⏸️ System paused from Firebase...")
-            time.sleep(1)  # prevent CPU spam
-            continue
-
-        # 🎤 Listen for trigger sound
+        # Listen for trigger sound
         Listen(10)
 
-        # 🔴 Check again after listening (important!)
-        if IsPaused(db):
-            print("⏸️ System paused before processing...")
-            continue
-
-        # 📷 Capture + predict
+        # Capture + predict
         for i in range(cameraAmount):
+
             TakeIMG(saveLocation, "TEMPNAME.png", i)
 
             imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
@@ -117,28 +100,27 @@ def main():
 
             RenameIMG(saveLocation, predictions[i], threshold)
 
-        # 📊 Final decision
+        # Final decision
         fallPredFinal = MeanResults(predictions)
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
         fallDetected = bool(fallPredFinal < threshold)
 
-        # ☁️ Upload result
-        db.collection("FallEvents").document("events").set({
+        # Upload result — each event gets its own document
+        db.collection("FallEvents").document(timestamp).set({
             "timestamp": timestamp,
-            "fall": fallDetected
-        }, merge=True)
+            "fall": fallDetected,
+            "prediction_score": float(fallPredFinal)
+        })
 
-        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected}")
+        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected} (score={fallPredFinal})")
 
         if fallDetected:
             print("🚨 Fall Detected! 🚨")
         else:
             print("✅ No Fall Detected.")
 
-        # Small delay to prevent rapid looping
         time.sleep(0.5)
-
 
 if __name__ == "__main__":
     main()
