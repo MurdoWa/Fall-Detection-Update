@@ -88,7 +88,7 @@ def main():
 
     threshold = 0.6
     saveLocation = "images/"
-    cameraAmount = 2
+    cameraAmount = 1
     predictions = [0] * cameraAmount
 
     while True:
