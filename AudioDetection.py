@@ -6,6 +6,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 import time
+import os
 
 # Audio configuration
 CHUNK = 1024
@@ -88,6 +89,15 @@ def main():
         collection_name = "FallEvents"
         print(f"No name entered, defaulting to '{collection_name}'.")
 
+    # Ask user whether to save or delete images after processing
+    while True:
+        save_choice = input("Save images after processing? (y/n): ").strip().lower()
+        if save_choice in ("y", "n"):
+            saveImages = save_choice == "y"
+            break
+        else:
+            print("Please enter 'y' or 'n'.")
+
     threshold = 0.6
     saveLocation = "images/"
     predictions = [0] * cameraAmount
@@ -113,6 +123,12 @@ def main():
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
         fallDetected = bool(fallPredFinal < threshold)
+
+        # Delete images if user opted not to save them
+        if not saveImages:
+            for f in os.listdir(saveLocation):
+                if f.endswith(".png"):
+                    os.remove(os.path.join(saveLocation, f))
 
         # Upload result — each event gets its own document
         db.collection(collection_name).document(timestamp).set({
