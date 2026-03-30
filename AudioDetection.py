@@ -116,19 +116,17 @@ def main():
 
             predictions[i] = FallDetect(imgArray, threshold)
 
-            RenameIMG(saveLocation, predictions[i], threshold)
+            renamed_file = RenameIMG(saveLocation, predictions[i], threshold)
+            if not saveImages:
+                filepath = os.path.join(saveLocation, renamed_file)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
 
         # Final decision
         fallPredFinal = MeanResults(predictions)
 
         timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
         fallDetected = bool(fallPredFinal < threshold)
-
-        # Delete images if user opted not to save them
-        if not saveImages:
-            for f in os.listdir(saveLocation):
-                if f.endswith(".png"):
-                    os.remove(os.path.join(saveLocation, f))
 
         # Upload result — each event gets its own document
         db.collection(collection_name).document(timestamp).set({
