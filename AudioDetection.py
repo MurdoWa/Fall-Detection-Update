@@ -1,4 +1,3 @@
-import pyaudio
 import numpy as np
 from ImageDetection import *
 from FileManager import *
@@ -7,57 +6,6 @@ from firebase_admin import credentials, firestore
 from datetime import datetime
 import time
 import os
-
-# Audio configuration
-CHUNK = 1024
-RATE = 16000
-
-
-def Listen(Audiothreshold, device_index=None):
-    """
-    Listens to audio input until the RMS volume exceeds the threshold.
-    """
-    p = pyaudio.PyAudio()
-    stream = None
-
-    try:
-        stream = p.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=RATE,
-            input=True,
-            frames_per_buffer=CHUNK,
-            input_device_index=device_index
-        )
-
-        print("Listening...")
-
-        while True:
-            try:
-                data = np.frombuffer(
-                    stream.read(CHUNK, exception_on_overflow=False),
-                    dtype=np.int16
-                )
-            except IOError as e:
-                print("Audio read error:", e)
-                continue
-
-            rms = np.sqrt(np.mean(data.astype(np.float32) ** 2))
-            if np.isnan(rms):
-                rms = 0
-
-            volume = int(min((rms / 32768) * 100, 100))
-            print(volume)
-
-            if volume > Audiothreshold:
-                break
-
-    finally:
-        if stream is not None:
-            stream.stop_stream()
-            stream.close()
-        p.terminate()
-        print("Audio stream closed.")
 
 
 def main():
@@ -78,13 +26,18 @@ def main():
             print("Invalid input. Please enter a whole number.")
 
     # Firebase initialization
-    cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
+    cred = credentials.Certificate(
+        'soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json'
+    )
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Connected to Firebase successfully!")
 
     # Ask user for collection name
-    collection_name = input("Enter the Firestore collection name to push events to: ").strip()
+    collection_name = input(
+        "Enter the Firestore collection name to push events to: "
+    ).strip()
+
     if not collection_name:
         collection_name = "FallEvents"
         print(f"No name entered, defaulting to '{collection_name}'.")
@@ -102,47 +55,59 @@ def main():
     saveLocation = "images/"
     predictions = [0] * cameraAmount
 
-    while True:
+    last_state = None  # track last fall state to prevent spam uploads
 
-        # Listen for trigger sound
-        Listen(10)
+    print("\nSystem running... Press CTRL+C to stop.\n")
 
-        # Capture + predict
-        for i in range(cameraAmount):
+    try:
+        while True:
 
-            TakeIMG(saveLocation, "TEMPNAME.png", i)
+            # ⏱ Wait before next check
+            time.sleep(1)
 
-            imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
+            # 📸 Capture + predict
+            for i in range(cameraAmount):
 
-            predictions[i] = FallDetect(imgArray, threshold)
+                TakeIMG(saveLocation, "TEMPNAME.png", i)
 
-            renamed_file = RenameIMG(saveLocation, predictions[i], threshold)
-            if not saveImages:
-                filepath = os.path.join(saveLocation, renamed_file)
-                if os.path.exists(filepath):
-                    os.remove(filepath)
+                imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
 
-        # Final decision
-        fallPredFinal = MeanResults(predictions)
+                predictions[i] = FallDetect(imgArray, threshold)
 
-        timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
-        fallDetected = bool(fallPredFinal < threshold)
+                renamed_file = RenameIMG(saveLocation, predictions[i], threshold)
 
-        # Upload result — each event gets its own document
-        db.collection(collection_name).document(timestamp).set({
-            "timestamp": timestamp,
-            "fall": fallDetected,
-            "prediction_score": float(fallPredFinal)
-        })
+                # 🧹 Delete image if not saving
+                if not saveImages:
+                    filepath = os.path.join(saveLocation, renamed_file)
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
 
-        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected} (score={fallPredFinal})")
+            # 🧠 Final decision
+            fallPredFinal = MeanResults(predictions)
 
-        if fallDetected:
-            print("🚨 Fall Detected! 🚨")
-        else:
-            print("✅ No Fall Detected.")
+            timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
+            fallDetected = bool(fallPredFinal < threshold)
 
-        time.sleep(0.5)
+            print(f"[{timestamp}] Fall: {fallDetected} (score={fallPredFinal})")
+
+            # ☁️ Upload ONLY if state changes
+            if fallDetected != last_state:
+                db.collection(collection_name).document(timestamp).set({
+                    "timestamp": timestamp,
+                    "fall": fallDetected,
+                    "prediction_score": float(fallPredFinal)
+                })
+
+                print("Uploaded to Firebase ✔")
+                last_state = fallDetected
+
+                if fallDetected:
+                    print("🚨 Fall Detected!")
+                else:
+                    print("✅ No Fall Detected.")
+
+    except KeyboardInterrupt:
+        print("\nProgram stopped by user.")
 
 
 if __name__ == "__main__":
