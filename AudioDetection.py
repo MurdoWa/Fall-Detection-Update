@@ -1,3 +1,4 @@
+import pyaudio
 import numpy as np
 from ImageDetection import *
 from FileManager import *
@@ -6,6 +7,71 @@ from firebase_admin import credentials, firestore
 from datetime import datetime
 import time
 import os
+import scipy.signal
+
+# Audio configuration
+CHUNK = 1024
+RATE = 16000
+
+# Begins Listening Function
+#Audio Threshold is the average
+#Peak threshold is the peak
+def Listen(Audiothreshold=110, PeakThreshold=2000, device_index=None, chunks_to_average=10):
+
+    p = pyaudio.PyAudio()
+    stream = None
+    rms_values = []
+
+    # Low-pass filter helper
+    def lowpass_filter(signal, cutoff=300, fs=RATE, order=4):
+        b, a = scipy.signal.butter(order, cutoff / (0.5 * fs), btype='low')
+        return scipy.signal.lfilter(b, a, signal)
+
+    try:
+        stream = p.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK,
+            input_device_index=device_index
+        )
+
+        print("Listening for impact...")
+
+        while True:
+            try:
+                data = np.frombuffer(stream.read(CHUNK, exception_on_overflow=False), dtype=np.int16)
+            except IOError as e:
+                print("Audio read error:", e)
+                continue
+
+            # Low-pass filter for soft impact emphasis
+            filtered = lowpass_filter(data)
+
+            # RMS and peak
+            rms = np.sqrt(np.mean(filtered.astype(np.float32) ** 2))
+            peak = np.max(np.abs(filtered))
+
+            # Rolling RMS average
+            rms_values.append(rms)
+            if len(rms_values) > chunks_to_average:
+                rms_values.pop(0)
+            avg_rms = np.mean(rms_values)
+
+            print(f"RMS: {avg_rms:.1f}, Peak: {peak}")
+
+            # Trigger condition
+            if avg_rms > Audiothreshold or peak > PeakThreshold:
+                print("Impact detected!")
+                return avg_rms, peak
+
+    finally:
+        if stream is not None:
+            stream.stop_stream()
+            stream.close()
+        p.terminate()
+        print("Audio stream closed.")
 
 
 def main():
@@ -26,18 +92,13 @@ def main():
             print("Invalid input. Please enter a whole number.")
 
     # Firebase initialization
-    cred = credentials.Certificate(
-        'soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json'
-    )
+    cred = credentials.Certificate('soc10101-fall-detection-firebase-adminsdk-fbsvc-601713d01f.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Connected to Firebase successfully!")
 
     # Ask user for collection name
-    collection_name = input(
-        "Enter the Firestore collection name to push events to: "
-    ).strip()
-
+    collection_name = input("Enter the Firestore collection name to push events to: ").strip()
     if not collection_name:
         collection_name = "FallEvents"
         print(f"No name entered, defaulting to '{collection_name}'.")
@@ -55,59 +116,49 @@ def main():
     saveLocation = "images/"
     predictions = [0] * cameraAmount
 
-    last_state = None  # track last fall state to prevent spam uploads
+    while True:
 
-    print("\nSystem running... Press CTRL+C to stop.\n")
+        # Listen for trigger sound and get RMS + Peak
+        rms_value, peak_value = Listen()
 
-    try:
-        while True:
+        # Capture + predict
+        for i in range(cameraAmount):
 
-            # ⏱ Wait before next check
-            time.sleep(1)
+            TakeIMG(saveLocation, "TEMPNAME.png", i)
 
-            # 📸 Capture + predict
-            for i in range(cameraAmount):
+            imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
 
-                TakeIMG(saveLocation, "TEMPNAME.png", i)
+            predictions[i] = FallDetect(imgArray, threshold)
 
-                imgArray = ProcessImg(saveLocation + "TEMPNAME.png")
+            renamed_file = RenameIMG(saveLocation, predictions[i], threshold)
 
-                predictions[i] = FallDetect(imgArray, threshold)
+            if not saveImages:
+                filepath = os.path.join(saveLocation, renamed_file)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
 
-                renamed_file = RenameIMG(saveLocation, predictions[i], threshold)
+        # Final decision
+        fallPredFinal = MeanResults(predictions)
 
-                # 🧹 Delete image if not saving
-                if not saveImages:
-                    filepath = os.path.join(saveLocation, renamed_file)
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
+        timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
+        fallDetected = bool(fallPredFinal < threshold)
 
-            # 🧠 Final decision
-            fallPredFinal = MeanResults(predictions)
+        # Upload result to Firebase
+        db.collection(collection_name).document(timestamp).set({
+            "timestamp": timestamp,
+            "fall": fallDetected,
+            "prediction_score": float(fallPredFinal),
+            "rms": float(rms_value)
+        })
 
-            timestamp = datetime.now().strftime("%d_%m_%Y-%H_%M_%S")
-            fallDetected = bool(fallPredFinal < threshold)
+        print(f"Uploaded to Firebase: {timestamp} -> {fallDetected} (score={fallPredFinal}, RMS={rms_value:.1f}, Peak={peak_value})")
 
-            print(f"[{timestamp}] Fall: {fallDetected} (score={fallPredFinal})")
+        if fallDetected:
+            print("Fall Detected!")
+        else:
+            print("No Fall Detected.")
 
-            # ☁️ Upload ONLY if state changes
-            if fallDetected != last_state:
-                db.collection(collection_name).document(timestamp).set({
-                    "timestamp": timestamp,
-                    "fall": fallDetected,
-                    "prediction_score": float(fallPredFinal)
-                })
-
-                print("Uploaded to Firebase ✔")
-                last_state = fallDetected
-
-                if fallDetected:
-                    print("🚨 Fall Detected!")
-                else:
-                    print("✅ No Fall Detected.")
-
-    except KeyboardInterrupt:
-        print("\nProgram stopped by user.")
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
