@@ -61,10 +61,7 @@ def FallDetect(img_array, threshold):
 #takes image
 #takes in file save location, name to save the file and the input camera
 def TakeIMG(saveLocation, fileName, inputCam):
-    """
-    Captures a single image from the specified camera only when called.
-    Opens and releases the camera immediately to avoid keeping it always on.
-    """
+
     cam = cv2.VideoCapture(inputCam)
 
     # Check if camera opened successfully

@@ -75,10 +75,6 @@ def Listen(Audiothreshold=110, PeakThreshold=2000, device_index=None, chunks_to_
 
 
 def main():
-    """
-    Main function to initialize Firebase, capture images, predict falls,
-    and upload results.
-    """
 
     # Ask user for number of cameras
     while True:
