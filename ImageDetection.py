@@ -52,9 +52,9 @@ def FallDetect(img_array, threshold):
     print("Raw prediction:", prediction)
 
     if prediction[0] < threshold:
-        print("Prediction: 🚨 Fall Detected! 🚨")
+        print("Prediction: Fall Detected!")
     else:
-        print("Prediction: ✅ No Fall Detected.")
+        print("Prediction: No Fall Detected.")
     return prediction
 
 
