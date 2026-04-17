@@ -1,12 +1,23 @@
-from cv2 import VideoCapture, imshow, imwrite, waitKey, destroyWindow
+import cv2
+import time
 from huggingface_hub import hf_hub_download
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.efficientnet import preprocess_input
 import numpy as np
 import matplotlib.pyplot as plt
+# Disable ALSA warnings
+import ctypes
+from ctypes import *
 import os
-from datetime import datetime
+def noalsaerr(*args):
+    pass
+
+ERROR_HANDLER_FUNC = CFUNCTYPE(None, c_char_p, c_int, c_char_p, c_int, c_char_p)
+c_error_handler = ERROR_HANDLER_FUNC(noalsaerr)
+
+
+os.environ["JACK_NO_START_SERVER"] = "1"
 
 #Download model from Hugging Face
 model_path = hf_hub_download(
@@ -16,6 +27,9 @@ model_path = hf_hub_download(
 #Load the model
 model = load_model(model_path)
 
+
+#sets image to 224x224
+#takes in path to image
 def ProcessImg(img_path):
     IMG_SIZE = (224, 224)
     img = image.load_img(img_path, target_size=IMG_SIZE)
@@ -23,49 +37,68 @@ def ProcessImg(img_path):
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
 
-    plt.imshow(img)
-    plt.axis("off")
-    plt.show()
+    #shows image (useless on command line)
+    #plt.imshow(img)
+    #plt.axis("off")
+    #plt.show()
     return img_array
 
-def FallDetect(img_array, fallBool):
+#detects fall
+#takes in path to image and fall threshold
+#returns prediction as float
+def FallDetect(img_array, threshold):
 
     prediction = model.predict(img_array)
     print("Raw prediction:", prediction)
 
-    if prediction[0] < 0.60:
+    if prediction[0] < threshold:
         print("Prediction: 🚨 Fall Detected! 🚨")
-        fallBool = True
     else:
         print("Prediction: ✅ No Fall Detected.")
-        fallBool = False
-    return fallBool
+    return prediction
 
-def TakeIMG(saveLocation,fileName):
 
-    # Initialize webcam (0 = default camera)
-    cam = VideoCapture(0)
-    # Capture one frame
+#takes image
+#takes in file save location, name to save the file and the input camera
+def TakeIMG(saveLocation, fileName, inputCam):
+
+    cam = cv2.VideoCapture(inputCam)
+
+    # Check if camera opened successfully
+    if not cam.isOpened():
+        print(f"Camera {inputCam} not available")
+        return False
+
     ret, frame = cam.read()
-
     if ret:
-        imwrite(saveLocation+fileName, frame)
+        cv2.imwrite(saveLocation + fileName, frame)
         print("Captured image")
     else:
-        print("Failed to capture image.")
+        print(f"Failed to capture image from camera {inputCam}")
 
     cam.release()
+    
+    # Small pause to reduce Linux V4L2 warnings on repeated access
+    time.sleep(0.2)
+    
+    return ret
 
+def AndResults(analysis1, analysis2 ,threshold):
+    if analysis1 > threshold and analysis2 > threshold:
+        return True
+    else:
+        return False
+def OrResults(analysis1, analysis2 ,threshold):
+    if analysis1 > threshold:
+        return True
+    elif analysis2 > threshold:
+        return True
+    else:
+        return False
 
-def RenameIMG(saveLocation, fallBool):
-    now = datetime.now()
-    dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
-    if fallBool == True:
-        os.rename(saveLocation+"TEMPNAME.png", saveLocation+"fall_"+dt_string+".png")
+def MeanResults(predictions ):
 
-    elif fallBool == False:
-        os.rename(saveLocation+"TEMPNAME.png", saveLocation+"nofall_"+dt_string+".png")
-
-def DeleteIMG(saveLocation, fileName):
-    os.remove(saveLocation+fileName)
+    analysis3 = np.mean(predictions)
+    print(f"{analysis3}")
+    return analysis3
 
