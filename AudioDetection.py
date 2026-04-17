@@ -138,9 +138,9 @@ def main():
         print(f"Uploaded to Firebase: {timestamp} -> {fallDetected} (score={fallPredFinal})")
 
         if fallDetected:
-            print("Fall Detected! ")
+            print("🚨 Fall Detected! 🚨")
         else:
-            print("No Fall Detected.")
+            print("✅ No Fall Detected.")
 
         time.sleep(0.5)
 

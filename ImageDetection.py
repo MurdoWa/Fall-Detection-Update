@@ -16,8 +16,6 @@ def noalsaerr(*args):
 ERROR_HANDLER_FUNC = CFUNCTYPE(None, c_char_p, c_int, c_char_p, c_int, c_char_p)
 c_error_handler = ERROR_HANDLER_FUNC(noalsaerr)
 
-#asound = cdll.LoadLibrary("libasound.so")
-#asound.snd_lib_error_set_handler(c_error_handler)
 
 os.environ["JACK_NO_START_SERVER"] = "1"
 
@@ -40,9 +38,9 @@ def ProcessImg(img_path):
     img_array = preprocess_input(img_array)
 
     #shows image (useless on command line)
-    plt.imshow(img)
-    plt.axis("off")
-    plt.show()
+    #plt.imshow(img)
+    #plt.axis("off")
+    #plt.show()
     return img_array
 
 #detects fall
@@ -63,10 +61,7 @@ def FallDetect(img_array, threshold):
 #takes image
 #takes in file save location, name to save the file and the input camera
 def TakeIMG(saveLocation, fileName, inputCam):
-    """
-    Captures a single image from the specified camera only when called.
-    Opens and releases the camera immediately to avoid keeping it always on.
-    """
+
     cam = cv2.VideoCapture(inputCam)
 
     # Check if camera opened successfully
@@ -104,5 +99,6 @@ def OrResults(analysis1, analysis2 ,threshold):
 def MeanResults(predictions ):
 
     analysis3 = np.mean(predictions)
+    print(f"{analysis3}")
     return analysis3
 
